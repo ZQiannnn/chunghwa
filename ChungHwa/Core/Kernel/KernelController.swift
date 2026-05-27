@@ -37,7 +37,14 @@ final class KernelController {
     private var streamTasks: [Task<Void, Never>] = []
 
     private let log = Logger(subsystem: "org.clash.ChungHwa", category: "kernel")
-    private let externalControllerPort = 47913
+    /// Preferred external-controller port. The kernel picks the first free
+    /// port in `[preferred, preferred+countSearched)` at each start —
+    /// another Clash-family app (ClashX / Verge / Mihomo Party) holding
+    /// 47913 would otherwise wedge us: our mihomo silently loses the bind,
+    /// the API client races onto the foreign mihomo and bounces between
+    /// 401 (their secret) and -1004 (their port closing).
+    private let preferredControllerPort = 47913
+    private var externalControllerPort = 47913
 
     private let resolver: KernelBinaryResolver
     private let logStore: LogStore
@@ -86,6 +93,10 @@ final class KernelController {
         // mihomo then can't bind 47913 and the old one rejects our fresh
         // secret with 401).
         killOrphanMihomo()
+        // Foreign Clash-family apps (ClashX / Verge / Mihomo Party) own
+        // 47913 too. Reaping only touches our own children — for everyone
+        // else we move out of the way to a free port in the same range.
+        externalControllerPort = pickFreeControllerPort()
 
         do {
             try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
@@ -209,6 +220,38 @@ final class KernelController {
 
     private func generateSecret() -> String {
         UUID().uuidString + UUID().uuidString
+    }
+
+    /// Pick the first port in `[preferred, preferred+32)` that nothing is
+    /// listening on 127.0.0.1. Probe by `connect(2)` — if we can connect,
+    /// someone holds it; if not (`ECONNREFUSED`), the port is free.
+    /// Falls back to the preferred port if the whole range is taken (the
+    /// subsequent bind will fail clean and surface in the start error).
+    private func pickFreeControllerPort() -> Int {
+        let range = preferredControllerPort..<(preferredControllerPort + 32)
+        for port in range {
+            if !isPortInUse(port) { return port }
+        }
+        log.warning("no free port in \(self.preferredControllerPort, privacy: .public)…+32 — falling back to preferred")
+        return preferredControllerPort
+    }
+
+    private func isPortInUse(_ port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(port).bigEndian)
+        addr.sin_addr.s_addr = in_addr_t(0x7f000001).bigEndian // 127.0.0.1
+        let connectResult = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                connect(fd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        // connect() == 0 means something is accepting on that port. Anything
+        // else (ECONNREFUSED / ETIMEDOUT) means nobody's home.
+        return connectResult == 0
     }
 
     /// Find any mihomo process whose `-d` argument points at our dataDir
