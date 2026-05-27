@@ -116,29 +116,41 @@ private struct BannerEventBridge: View {
     @Environment(ProxyStore.self) private var proxyStore
     @Environment(RuleStore.self) private var ruleStore
     @Environment(ProfileStore.self) private var profileStore
+    @Environment(KernelController.self) private var kernel
 
     var body: some View {
         // Only error-level events post to bus + notifications. Mode-switch
         // and system-proxy toggles are user-initiated and don't need a
         // toast / notification of their own.
+        //
+        // Transient-noise filter: every kernel.restart() opens a brief
+        // window where in-flight URLSession tasks get cancelled (-999) and
+        // the next poll hits a dead socket (-1004) before mihomo finishes
+        // its rebind. None of that is actionable — it just floods the
+        // notification center with the same scary banner the user keeps
+        // screenshotting. We drop refresh errors unless the kernel is
+        // currently `.running`, and we always drop NSURLErrorCancelled.
         Color.clear
             .frame(width: 0, height: 0)
-            .onChange(of: configStore.lastError) { _, m in
-                bus.error(source: "内核", message: m)
-                notifications.post(source: "内核", level: .error, message: m)
-            }
-            .onChange(of: proxyStore.lastError) { _, m in
-                bus.error(source: "代理", message: m)
-                notifications.post(source: "代理", level: .error, message: m)
-            }
-            .onChange(of: ruleStore.lastError) { _, m in
-                bus.error(source: "规则", message: m)
-                notifications.post(source: "规则", level: .error, message: m)
-            }
-            .onChange(of: profileStore.lastError) { _, m in
-                bus.error(source: "配置", message: m)
-                notifications.post(source: "配置", level: .error, message: m)
-            }
+            .onChange(of: configStore.lastError) { _, m in publish(source: "内核", message: m) }
+            .onChange(of: proxyStore.lastError)  { _, m in publish(source: "代理", message: m) }
+            .onChange(of: ruleStore.lastError)   { _, m in publish(source: "规则", message: m) }
+            .onChange(of: profileStore.lastError) { _, m in publish(source: "配置", message: m) }
+    }
+
+    private func publish(source: String, message: String?) {
+        guard let message, !message.isEmpty else {
+            bus.error(source: source, message: nil)
+            return
+        }
+        // -999 (cancelled) is always benign — URLSession-level fallout
+        // from a kernel restart we initiated. -1004 (could-not-connect)
+        // we filter out only while the kernel is mid-restart.
+        if message.contains("Code=-999") { return }
+        if case .running = kernel.status {
+            bus.error(source: source, message: message)
+            notifications.post(source: source, level: .error, message: message)
+        }
     }
 }
 
