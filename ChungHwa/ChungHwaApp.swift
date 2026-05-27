@@ -41,6 +41,8 @@ struct ChungHwaApp: App {
                 .environment(appDelegate.historyStore)
                 .environment(appDelegate.connectionsStore)
                 .environment(appDelegate.anonymousMode)
+                .environment(appDelegate.resolver)
+                .environment(appDelegate.notificationCenterStore)
         } label: {
             MenubarLabel()
                 .environment(appDelegate.kernel)
