@@ -147,11 +147,17 @@ final class KernelController {
 
             let baseURL = URL(string: "http://127.0.0.1:\(externalControllerPort)")!
             let client = MihomoAPIClient(baseURL: baseURL, secret: secret)
-            self.apiClient = client
             let stream = MihomoStreamClient(baseURL: baseURL, secret: secret)
-            self.streamClient = stream
 
+            // Don't publish apiClient / streamClient yet. Views observe
+            // them via `.task(id: kernel.apiClient)` and will immediately
+            // refresh — if we expose them before mihomo's listening, every
+            // view hits ECONNREFUSED and floods the notification center
+            // with one -1004 entry per click. Hold the references locally,
+            // do the readiness probe, only publish after mihomo answers.
             let version = try await waitForReady(client: client, timeout: 8)
+            self.apiClient = client
+            self.streamClient = stream
             status = .running(version: version)
             startedAt = Date()
             log.info("mihomo ready version=\(version, privacy: .public)")
