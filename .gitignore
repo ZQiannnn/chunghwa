@@ -1,5 +1,19 @@
 # macOS
 .DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Local Claude settings
+.claude/settings.local.json
 
 # Xcode
 build/
@@ -37,5 +51,4 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
-.claude/settings.local.json
 /docs/
