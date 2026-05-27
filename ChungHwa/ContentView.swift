@@ -7,7 +7,15 @@ final class BannerBus {
     private(set) var current: (level: Level, source: String, message: String, posted: Date)?
 
     func post(level: Level, source: String, message: String?) {
-        guard let message, !message.isEmpty else { return }
+        // Nil / empty message means the source's error condition cleared
+        // (e.g. configStore.lastError flipped back to nil after the next
+        // successful refresh). Drop the banner if it belonged to that
+        // source — without this, the first -1004 during a kernel restart
+        // would latch the banner on screen forever even after recovery.
+        guard let message, !message.isEmpty else {
+            if let cur = current, cur.source == source { current = nil }
+            return
+        }
         // De-dupe identical back-to-back posts: when a store re-emits the
         // same lastError on a refresh, we'd otherwise reset the entry's
         // `posted` and re-trigger the snappy in/out animation for no
