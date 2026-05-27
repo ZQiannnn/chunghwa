@@ -125,6 +125,7 @@ private struct BannerEventBridge: View {
     @Environment(RuleStore.self) private var ruleStore
     @Environment(ProfileStore.self) private var profileStore
     @Environment(KernelController.self) private var kernel
+    @Environment(SystemProxyController.self) private var systemProxy
 
     var body: some View {
         // Only error-level events post to bus + notifications. Mode-switch
@@ -144,6 +145,18 @@ private struct BannerEventBridge: View {
             .onChange(of: proxyStore.lastError)  { _, m in publish(source: "代理", message: m) }
             .onChange(of: ruleStore.lastError)   { _, m in publish(source: "规则", message: m) }
             .onChange(of: profileStore.lastError) { _, m in publish(source: "配置", message: m) }
+            // System-proxy errors don't depend on kernel readiness, so
+            // post them regardless of kernel.status — they're typically
+            // helper exit codes / SCPreferences failures we want the
+            // user to actually see when the toggle no-ops.
+            .onChange(of: systemProxy.lastError) { _, m in
+                guard let m, !m.isEmpty else {
+                    bus.error(source: "系统代理", message: nil)
+                    return
+                }
+                bus.error(source: "系统代理", message: m)
+                notifications.post(source: "系统代理", level: .error, message: m)
+            }
     }
 
     private func publish(source: String, message: String?) {

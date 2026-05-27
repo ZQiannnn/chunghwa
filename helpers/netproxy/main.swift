@@ -74,7 +74,22 @@ guard !services.isEmpty else {
     exit(3)
 }
 
-var failures = 0
+// We treat per-service failures as best-effort: some services
+// (Thunderbolt Bridge, FireWire, certain VPN clients) accept HTTP/HTTPS
+// but reject `-setsocksfirewallproxy` with errno 14, and a single such
+// non-zero return shouldn't take the whole toggle down — the UI would
+// latch `enabled = false` and the user could never turn the proxy back
+// on. Track touched/failed counts and only fail the whole command when
+// not a single service accepted any change.
+var touched = 0
+var subCallFailures = 0
+
+@discardableResult
+func tryRun(_ argv: [String]) -> Bool {
+    if run(argv) == 0 { return true }
+    subCallFailures += 1
+    return false
+}
 
 switch mode {
 case "enable":
@@ -86,24 +101,34 @@ case "enable":
     let port = args[3]
     let bypass = Array(args.dropFirst(4))
     for svc in services {
-        if run(["-setwebproxy", svc, host, port]) != 0 { failures += 1 }
-        if run(["-setsecurewebproxy", svc, host, port]) != 0 { failures += 1 }
-        if run(["-setsocksfirewallproxy", svc, host, port]) != 0 { failures += 1 }
+        var anyOk = false
+        if tryRun(["-setwebproxy", svc, host, port]) { anyOk = true }
+        if tryRun(["-setsecurewebproxy", svc, host, port]) { anyOk = true }
+        // SOCKS is the flaky one — keep trying it but don't count it
+        // against this service's "took at least one setting" check.
+        _ = tryRun(["-setsocksfirewallproxy", svc, host, port])
         if !bypass.isEmpty {
-            if run(["-setproxybypassdomains", svc] + bypass) != 0 { failures += 1 }
+            tryRun(["-setproxybypassdomains", svc] + bypass)
         }
-        if run(["-setwebproxystate", svc, "on"]) != 0 { failures += 1 }
-        if run(["-setsecurewebproxystate", svc, "on"]) != 0 { failures += 1 }
-        if run(["-setsocksfirewallproxystate", svc, "on"]) != 0 { failures += 1 }
-        print("enabled on \(svc)")
+        if tryRun(["-setwebproxystate", svc, "on"]) { anyOk = true }
+        if tryRun(["-setsecurewebproxystate", svc, "on"]) { anyOk = true }
+        _ = tryRun(["-setsocksfirewallproxystate", svc, "on"])
+        if anyOk {
+            touched += 1
+            print("enabled on \(svc)")
+        }
     }
 
 case "disable":
     for svc in services {
-        if run(["-setwebproxystate", svc, "off"]) != 0 { failures += 1 }
-        if run(["-setsecurewebproxystate", svc, "off"]) != 0 { failures += 1 }
-        if run(["-setsocksfirewallproxystate", svc, "off"]) != 0 { failures += 1 }
-        print("disabled on \(svc)")
+        var anyOk = false
+        if tryRun(["-setwebproxystate", svc, "off"]) { anyOk = true }
+        if tryRun(["-setsecurewebproxystate", svc, "off"]) { anyOk = true }
+        _ = tryRun(["-setsocksfirewallproxystate", svc, "off"])
+        if anyOk {
+            touched += 1
+            print("disabled on \(svc)")
+        }
     }
 
 default:
@@ -111,4 +136,10 @@ default:
     exit(2)
 }
 
-exit(failures == 0 ? 0 : 4)
+if touched == 0 {
+    FileHandle.standardError.write(Data("no service accepted any change (\(subCallFailures) sub-call failures)\n".utf8))
+    exit(4)
+}
+// Some sub-calls may have failed, but at least one service took the
+// change — that's success from the UI's perspective.
+exit(0)
