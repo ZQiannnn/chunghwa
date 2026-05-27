@@ -242,6 +242,7 @@
 			);
 			inputPaths = (
 				"$(SRCROOT)/scripts/fetch-mihomo.sh",
+				"$(SRCROOT)/helpers/netproxy/main.swift",
 			);
 			name = "Embed mihomo";
 			outputFileListPaths = (
@@ -250,10 +251,11 @@
 				"$(SRCROOT)/Vendor/mihomo/mihomo",
 				"$(SRCROOT)/Vendor/mihomo/version.txt",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/mihomo",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/chunghwa-netproxy",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "set -euo pipefail\nbash \"$SRCROOT/scripts/fetch-mihomo.sh\"\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\ncp \"$SRCROOT/Vendor/mihomo/mihomo\" \"$DEST/mihomo\"\nchmod +x \"$DEST/mihomo\"\n";
+			shellScript = "set -euo pipefail\nbash \"$SRCROOT/scripts/fetch-mihomo.sh\"\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\ncp \"$SRCROOT/Vendor/mihomo/mihomo\" \"$DEST/mihomo\"\nchmod +x \"$DEST/mihomo\"\nxcrun swiftc -O -o \"$DEST/chunghwa-netproxy\" \"$SRCROOT/helpers/netproxy/main.swift\"\ncodesign -f -s - \"$DEST/chunghwa-netproxy\"\nchmod +x \"$DEST/chunghwa-netproxy\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

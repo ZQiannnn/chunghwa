@@ -170,6 +170,17 @@ final class SystemProxyController {
     }
 
     private func apply(on: Bool) throws {
+        // Prefer the setuid-root netproxy helper installed alongside the
+        // privileged mihomo binary. Granted once via osascript, it
+        // persists across app launches so the user never has to type
+        // their password to toggle the system proxy again. Fall back to
+        // the in-process SCPreferences + AuthorizationRef path when the
+        // helper isn't installed (older builds, post-revoke).
+        if KernelPrivilegeHelper.isNetproxyHelperPrivileged() {
+            try applyViaPrivilegedHelper(on: on)
+            return
+        }
+
         let auth = try obtainAuth()
 
         guard let prefs = SCPreferencesCreateWithAuthorization(nil, "ChungHwa" as CFString, nil, auth) else {
@@ -217,5 +228,33 @@ final class SystemProxyController {
             throw SystemProxyError.preferences("apply failed (errno=\(SCError()))")
         }
         log.info("touched \(touched, privacy: .public) services")
+    }
+
+    /// Shell out to the setuid-root netproxy helper. The helper itself
+    /// iterates `networksetup -listallnetworkservices` and toggles each
+    /// — we just pass host/port/bypass.
+    private func applyViaPrivilegedHelper(on: Bool) throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: KernelPrivilegeHelper.netproxyHelperPath)
+        if on {
+            proc.arguments = ["enable", host, String(port)] + Self.composeExceptions()
+        } else {
+            proc.arguments = ["disable"]
+        }
+        let err = Pipe()
+        proc.standardError = err
+        proc.standardOutput = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            throw SystemProxyError.preferences("spawn helper failed: \(error)")
+        }
+        if proc.terminationStatus != 0 {
+            let data = err.fileHandleForReading.readDataToEndOfFile()
+            let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            throw SystemProxyError.preferences("helper exit \(proc.terminationStatus): \(raw)")
+        }
+        log.info("netproxy helper applied (on=\(on, privacy: .public))")
     }
 }
