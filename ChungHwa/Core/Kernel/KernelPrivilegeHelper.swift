@@ -52,6 +52,39 @@ struct KernelPrivilegeHelper {
         let shell = "mkdir -p /Library/PrivilegedHelperTools && cp \\\"\(src)\\\" \\\"\(dst)\\\" && chown root:wheel \\\"\(dst)\\\" && chmod u+s \\\"\(dst)\\\""
         let script = "do shell script \"\(shell)\" with administrator privileges"
         try await runOsascript(script: script, failurePrefix: "授权失败")
+        // Verify the binary actually landed setuid-root. If osascript reports
+        // success but the file isn't in place (rare but possible: SIP/MDM
+        // policy, sandbox container redirect, or a transparent overlay),
+        // surface a clear error instead of silently re-prompting on the next
+        // TUN toggle.
+        guard isPrivileged() else {
+            throw NSError(
+                domain: "ChungHwa.Privilege",
+                code: -10,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "授权未生效：\(privilegedBinaryPath) 不存在或缺少 setuid root 位。请检查 MDM / 系统完整性策略是否阻止了对该路径的写入。"]
+            )
+        }
+    }
+
+    /// Convenience used by the toolbar / menubar TUN buttons: if the
+    /// privileged binary isn't in place yet, run the osascript grant flow
+    /// against whichever non-privileged source (custom / managed / bundled)
+    /// the resolver would otherwise pick. On success, refresh the resolver
+    /// so subsequent kernel restarts spawn the setuid-root copy. No-op when
+    /// already privileged — that's what makes the auth prompt one-time.
+    @MainActor
+    static func ensurePrivileged(resolver: KernelBinaryResolver) async throws {
+        if isPrivileged() { return }
+        guard let source = resolver.nonPrivilegedCurrent else {
+            throw NSError(
+                domain: "ChungHwa.Privilege",
+                code: -11,
+                userInfo: [NSLocalizedDescriptionKey: "找不到可用的 mihomo 二进制（custom / managed / bundled 三档全空）"]
+            )
+        }
+        try await grantPrivileges(sourcePath: source.url.path)
+        resolver.refresh()
     }
 
     /// Removes the privileged file. Same osascript path as grant; no-op if

@@ -157,26 +157,36 @@ private struct ToolbarSysProxy: View {
 private struct ToolbarTUN: View {
     @Environment(KernelController.self) private var kernel
     @Environment(ConfigStore.self) private var config
+    @Environment(KernelBinaryResolver.self) private var resolver
+    @Environment(NotificationCenterStore.self) private var notifications
 
     var body: some View {
         let kernelReady = kernel.apiClient != nil
         let on = config.tunEnabled
         Button {
-            // If there's no privileged kernel installed, TUN can't actually
-            // open /dev/utun — bounce to Settings so the user can grant
-            // privileges instead of leaving them with a silent no-op.
-            if !on, !KernelPrivilegeHelper.isPrivileged() {
-                NotificationCenter.default.post(
-                    name: .chungHwaSwitchTab,
-                    object: SidebarTab.settings.rawValue
-                )
-                return
-            }
             // mihomo's PATCH /configs accepts tun.enable=false but doesn't
             // reliably tear down the utun device at runtime; flip the
             // persisted pref then restart the kernel so the new yaml drives
             // a clean state. Same logic for on→off and off→on.
+            //
+            // Turning ON also needs root (utun creation). If not yet
+            // privileged, fire the osascript grant flow inline — used to
+            // bounce to Settings, but that left the user wondering where
+            // the auth prompt went. Grant is one-time: the setuid binary
+            // at /Library/PrivilegedHelperTools/ persists across launches.
             Task {
+                if !on {
+                    do {
+                        try await KernelPrivilegeHelper.ensurePrivileged(resolver: resolver)
+                    } catch {
+                        notifications.post(
+                            source: "TUN",
+                            level: .error,
+                            message: (error as NSError).localizedDescription
+                        )
+                        return
+                    }
+                }
                 await config.setTUN(!on, api: kernel.apiClient)
                 await kernel.restart()
             }

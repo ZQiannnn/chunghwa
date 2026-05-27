@@ -11,6 +11,8 @@ struct MenubarContent: View {
     @Environment(ProfileStore.self) private var profileStore
     @Environment(ProxyStore.self) private var proxyStore
     @Environment(AnonymousMode.self) private var anon
+    @Environment(KernelBinaryResolver.self) private var resolver
+    @Environment(NotificationCenterStore.self) private var notifications
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,7 +71,26 @@ struct MenubarContent: View {
                 disabled: kernel.apiClient == nil
             ) {
                 Task {
-                    await config.setTUN(!config.tunEnabled, api: kernel.apiClient)
+                    let willEnable = !config.tunEnabled
+                    // Match the toolbar shield: turning ON needs root (utun
+                    // creation). Trigger the osascript grant flow inline if
+                    // not yet privileged — without this the kernel restart
+                    // below spawns a non-root mihomo that silently fails to
+                    // bring TUN up, leaving the user with a `transport:`
+                    // connect-refused notification and no clue why.
+                    if willEnable {
+                        do {
+                            try await KernelPrivilegeHelper.ensurePrivileged(resolver: resolver)
+                        } catch {
+                            notifications.post(
+                                source: "TUN",
+                                level: .error,
+                                message: (error as NSError).localizedDescription
+                            )
+                            return
+                        }
+                    }
+                    await config.setTUN(willEnable, api: kernel.apiClient)
                     await kernel.restart()
                 }
             }
