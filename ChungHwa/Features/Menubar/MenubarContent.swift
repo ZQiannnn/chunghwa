@@ -597,47 +597,15 @@ private struct MenubarLabelSpeed: View {
 
     var body: some View {
         if kernel.apiClient != nil {
-            // SwiftUI MenuBarExtra's NSStatusItem clips multi-line Text
-            // back to one row. NSImage doesn't get clipped — pre-render
-            // the two lines into an NSAttributedString-backed bitmap.
-            Image(nsImage: Self.makeRateImage(
-                up: rate(traffic.current?.upBps ?? 0),
-                down: rate(traffic.current?.downBps ?? 0)
-            ))
+            // Single-line: SwiftUI MenuBarExtra's NSStatusItem clips
+            // anything taller than the menubar slot back to nothing.
+            // Pack up + down side by side so the user still sees both
+            // numbers, with KB/s unit for readability.
+            Text("↑\(rate(traffic.current?.upBps ?? 0)) ↓\(rate(traffic.current?.downBps ?? 0))")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .lineLimit(1)
         }
-    }
-
-    /// Render two right-aligned monospaced lines into an NSImage so the
-    /// menubar slot stretches to its natural height. Drawn line-by-line
-    /// (not via boundingRect on a multi-line AttributedString — that
-    /// collapses width to 0 in some macOS builds and the image renders
-    /// invisibly) and NOT marked as template — labelColor needs the
-    /// real glyph colors to land on the menubar.
-    private static func makeRateImage(up: String, down: String) -> NSImage {
-        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.labelColor,
-        ]
-        let lines = [up, down]
-        let widths = lines.map { ($0 as NSString).size(withAttributes: attrs).width }
-        let lineH: CGFloat = 10
-        let imgW = ceil(widths.max() ?? 60) + 4
-        let imgH = lineH * CGFloat(lines.count) + 2
-        let image = NSImage(size: NSSize(width: imgW, height: imgH), flipped: false) { _ in
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .right
-            let lineAttrs = attrs.merging([.paragraphStyle: paragraph]) { $1 }
-            for (i, line) in lines.enumerated() {
-                let y = imgH - lineH * CGFloat(i + 1) - 1
-                (line as NSString).draw(
-                    in: NSRect(x: 0, y: y, width: imgW, height: lineH),
-                    withAttributes: lineAttrs
-                )
-            }
-            return true
-        }
-        return image
     }
 
     /// Human-readable rate with a fixed-width feel ("23 KB/s", "1.2 MB/s",
