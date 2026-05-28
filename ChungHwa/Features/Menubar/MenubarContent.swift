@@ -567,8 +567,9 @@ struct MenubarLabel: View {
             MenubarLabelIcon()
             MenubarLabelSpeed()
         }
-        // Wide enough for icon + "↑18 KB/s ↓5 KB/s" worst-case (1+M+G unit).
-        .frame(width: 150)
+        // Icon + two-line speed image — leave height implicit so the
+        // image's natural 20pt drives the slot, no width clamp needed.
+        .fixedSize()
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -596,18 +597,44 @@ private struct MenubarLabelSpeed: View {
 
     var body: some View {
         if kernel.apiClient != nil {
-            // SwiftUI MenuBarExtra's NSStatusItem clips multi-line text
-            // back to one line no matter what (.fixedSize / lineSpacing
-            // tricks don't survive the wrapper). Keep it single-line and
-            // pack up + down with arrows; user already accepted this
-            // wasn't going to be two-line cleanly without a separate
-            // NSAttributedString-into-NSImage path.
-            Text("↑\(rate(traffic.current?.upBps ?? 0)) ↓\(rate(traffic.current?.downBps ?? 0))")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .monospacedDigit()
-                .lineLimit(1)
-                .frame(width: 130, alignment: .leading)
+            // SwiftUI MenuBarExtra's NSStatusItem clips multi-line Text
+            // back to one row. NSImage doesn't get clipped — pre-render
+            // the two lines into an NSAttributedString-backed bitmap.
+            Image(nsImage: Self.makeRateImage(
+                up: rate(traffic.current?.upBps ?? 0),
+                down: rate(traffic.current?.downBps ?? 0)
+            ))
         }
+    }
+
+    /// Render two right-aligned monospaced lines into an NSImage so the
+    /// menubar slot stretches to its natural height. Marked as template
+    /// so macOS recolours it for light/dark menubar materials.
+    private static func makeRateImage(up: String, down: String) -> NSImage {
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        paragraph.lineSpacing = 0
+        paragraph.maximumLineHeight = 10
+        paragraph.minimumLineHeight = 10
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .paragraphStyle: paragraph,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let str = NSAttributedString(string: "\(up)\n\(down)", attributes: attrs)
+        // Measure with a wide bounding rect so we get the natural width.
+        let bounds = str.boundingRect(
+            with: NSSize(width: 200, height: 100),
+            options: [.usesLineFragmentOrigin]
+        )
+        let size = NSSize(width: ceil(bounds.width) + 2, height: 20)
+        let image = NSImage(size: size, flipped: false) { rect in
+            str.draw(with: rect, options: [.usesLineFragmentOrigin])
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     /// Human-readable rate with a fixed-width feel ("23 KB/s", "1.2 MB/s",
