@@ -20,8 +20,8 @@ enum ConfigComposer {
         let userHasDNS = hasTopLevelKey(bodyRaw, key: "dns")
 
         let blockKeysToStrip: [String] = userHasDNS
-            ? ["tun", "authentication"]
-            : ["tun", "dns", "authentication"]
+            ? ["tun", "sniffer", "authentication"]
+            : ["tun", "sniffer", "dns", "authentication"]
         let withoutBlocks = stripTopLevelBlocks(bodyRaw, keys: blockKeysToStrip)
         let stripped = stripTopLevelKeys(
             withoutBlocks,
@@ -29,6 +29,7 @@ enum ConfigComposer {
                 "external-controller", "secret",
                 "mixed-port", "port", "socks-port",
                 "unified-delay", "authentication",
+                "find-process-mode",
             ]
         )
         // Inject persisted custom rules into the body. They go ABOVE the
@@ -67,6 +68,26 @@ enum ConfigComposer {
         external-controller: \(externalControllerHostPort)
         secret: \(secret)
         unified-delay: \(unifiedDelay)\(authBlock)
+        # `find-process-mode: always` is what surfaces app/process name in
+        # the Connections view — without it that column is blank on macOS,
+        # both in TUN and system-proxy mode.
+        find-process-mode: always
+        # Sniffer reads TLS SNI / HTTP Host out of TCP/QUIC payloads so
+        # the Connections view shows real hostnames in TUN mode (which
+        # otherwise sees only fake-ip-resolved IPs). Without this, TUN
+        # rows in Connections look like '198.18.x.y:443' with no domain.
+        sniffer:
+          enable: true
+          parse-pure-ip: true
+          force-dns-mapping: true
+          sniff:
+            HTTP:
+              ports: [80, 8080-8880]
+              override-destination: true
+            TLS:
+              ports: [443, 8443]
+            QUIC:
+              ports: [443, 8443]
         tun:
           enable: \(tunEnabled)
           stack: system
