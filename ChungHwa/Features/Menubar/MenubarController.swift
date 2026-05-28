@@ -29,6 +29,10 @@ final class MenubarController: NSObject {
         popover.behavior = .transient
         popover.animates = false
         popover.contentSize = NSSize(width: 260, height: 360)
+        // Fixed pixel width so the slot doesn't dance as B/s / KB/s /
+        // MB/s strings change length. 76pt = 16 icon + 4 gap + ~56 for
+        // the widest plausible title ("↑999 KB/s").
+        statusItem.length = 76
         popover.contentViewController = NSHostingController(
             rootView: MenubarContent()
                 .environment(appDelegate.kernel)
@@ -116,9 +120,9 @@ final class MenubarController: NSObject {
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .right
-        paragraph.lineSpacing = 0
-        paragraph.maximumLineHeight = 10
-        paragraph.minimumLineHeight = 10
+        // Let the font choose line height; the manual 10pt clamp we
+        // had cropped the ascender on the first line and pushed the
+        // text noticeably above the icon's centre.
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.labelColor,
