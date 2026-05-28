@@ -562,8 +562,8 @@ struct MenubarLabel: View {
             MenubarLabelSpeed()
         }
         // Outer frame fixed so NSStatusItem doesn't repaint its size every
-        // tick. 16 (icon) + 4 (spacing) + 86 (speed) = 106.
-        .frame(width: 106, height: 18)
+        // tick. 16 (icon) + 4 (spacing) + 60 (stacked speed) = 80.
+        .frame(width: 80, height: 22)
         // Anchor everything to the leading edge — the user kept seeing the
         // icon drift because the speed Text was right-aligned, so the gap
         // between icon and text varied with string length.
@@ -594,30 +594,35 @@ private struct MenubarLabelSpeed: View {
 
     var body: some View {
         if kernel.apiClient != nil {
-            // .leading + trailing-pad: text always starts right after the
-            // icon (no variable gap). The trailing whitespace pads the cell
-            // so the total width never shrinks.
-            Text("↑\(short(traffic.current?.upBps ?? 0))  ↓\(short(traffic.current?.downBps ?? 0))")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .monospacedDigit()
-                .lineLimit(1)
-                .frame(width: 86, alignment: .leading)
+            // Two stacked lines — up on top, down on bottom — matches the
+            // iStat / TopNotch layout the user asked for. No arrows: row
+            // position carries the up/down semantic and frees horizontal
+            // budget for the rate unit ("KB/s") that everyone reads more
+            // easily than a bare number.
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(rate(traffic.current?.upBps ?? 0))
+                Text(rate(traffic.current?.downBps ?? 0))
+            }
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .monospacedDigit()
+            .lineLimit(1)
+            .lineSpacing(-2)
+            .frame(width: 60, alignment: .trailing)
         }
     }
 
-    /// Compact rate, padded to 4 chars (trailing spaces). Examples:
-    /// "0   " / "100B" / "12 K" / "1.2M" / "1.2G". Constant string length
-    /// keeps the status item from horizontally dancing as the rate rolls.
-    private func short(_ bps: Int) -> String {
-        let raw: String
+    /// Human-readable rate with a fixed-width feel ("23 KB/s", "1.2 MB/s",
+    /// "0 KB/s"). Stays under 8 chars so the 60pt cell never reflows.
+    private func rate(_ bps: Int) -> String {
         switch bps {
-        case 0:                 raw = "0"
-        case ..<1024:           raw = "\(bps)B"
-        case ..<1_048_576:      raw = String(format: "%.0fK", Double(bps) / 1024)
-        case ..<1_073_741_824:  raw = String(format: "%.1fM", Double(bps) / 1_048_576)
-        default:                raw = String(format: "%.1fG", Double(bps) / 1_073_741_824)
+        case ..<1024:
+            return "\(bps) B/s"
+        case ..<1_048_576:
+            return String(format: "%.0f KB/s", Double(bps) / 1024)
+        case ..<1_073_741_824:
+            return String(format: "%.1f MB/s", Double(bps) / 1_048_576)
+        default:
+            return String(format: "%.1f GB/s", Double(bps) / 1_073_741_824)
         }
-        if raw.count >= 4 { return raw }
-        return raw + String(repeating: " ", count: 4 - raw.count)
     }
 }
