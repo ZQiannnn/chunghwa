@@ -255,7 +255,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "set -euo pipefail\nbash \"$SRCROOT/scripts/fetch-mihomo.sh\"\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\ncp \"$SRCROOT/Vendor/mihomo/mihomo\" \"$DEST/mihomo\"\nchmod +x \"$DEST/mihomo\"\nxcrun swiftc -O -o \"$DEST/chunghwa-netproxy\" \"$SRCROOT/helpers/netproxy/main.swift\"\nchmod +x \"$DEST/chunghwa-netproxy\"\n";
+			shellScript = "set -euo pipefail\nbash \"$SRCROOT/scripts/fetch-mihomo.sh\"\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\ncp \"$SRCROOT/Vendor/mihomo/mihomo\" \"$DEST/mihomo\"\nchmod +x \"$DEST/mihomo\"\n# Build netproxy as a universal binary regardless of build slice — x86_64\n# .apps under Rosetta can't exec an arm64 helper and vice versa, which is\n# what 'Bad CPU type in executable' (errno 86) was.\nTMP=\"$DERIVED_FILE_DIR/netproxy-slices\"\nrm -rf \"$TMP\" && mkdir -p \"$TMP\"\nDEPLOY=\"${MACOSX_DEPLOYMENT_TARGET:-15.0}\"\nxcrun swiftc -O -target x86_64-apple-macos$DEPLOY -o \"$TMP/x86_64\" \"$SRCROOT/helpers/netproxy/main.swift\"\nxcrun swiftc -O -target arm64-apple-macos$DEPLOY -o \"$TMP/arm64\" \"$SRCROOT/helpers/netproxy/main.swift\"\nlipo -create \"$TMP/x86_64\" \"$TMP/arm64\" -output \"$DEST/chunghwa-netproxy\"\nchmod +x \"$DEST/chunghwa-netproxy\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
