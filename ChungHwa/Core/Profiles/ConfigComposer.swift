@@ -109,21 +109,19 @@ enum ConfigComposer {
     }
 
     /// Render the `route-exclude-address:` block from the user-managed
-    /// 「免认证 IP 段」list in Advanced. Baseline always includes loopback /
-    /// RFC1918 / link-local / IPv6 ULA + LL — without those, claiming the
-    /// default route via TUN black-holes LAN devices (printers, Bonjour,
-    /// NAS). Returns empty string (no block emitted, mihomo applies its
-    /// own default) when there are no entries to write — but baseline is
-    /// always non-empty, so in practice this always renders.
+    /// 「免认证 IP 段」list in Advanced. Baseline only includes addresses
+    /// that are unambiguously local (loopback + link-local + IPv6 LL/ULA);
+    /// RFC1918 ranges (10/8, 172.16/12, 192.168/16) are NOT baselined
+    /// because they're also the standard cloud-VPC ranges — defaulting
+    /// them to direct breaks any setup where the proxy lives inside a
+    /// VPC (e.g. accessing a cloud RDS instance via the proxy). Users
+    /// who want LAN devices direct can add their LAN subnet to Advanced
+    /// > 免认证 IP 段 themselves.
     private static func renderTunExcludeBlock() -> String {
         let baseline = [
             "127.0.0.0/8",
-            "10.0.0.0/8",
-            "172.16.0.0/12",
-            "192.168.0.0/16",
             "169.254.0.0/16",
             "::1/128",
-            "fd00::/8",
             "fe80::/10",
         ]
         var seen = Set(baseline)
