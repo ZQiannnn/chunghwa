@@ -123,16 +123,32 @@ final class ConfigStore {
         return (u, p)
     }
 
-    /// User-managed system-proxy bypass entries. Read by SystemProxyController
-    /// to populate the `ExceptionsList` when enabling the macOS proxy. Stored
-    /// as JSON-encoded `[BypassEntry]` from AdvancedView; we only need the
-    /// `ip` field here so we extract it loosely.
+    /// User-managed bypass IP list — single source of truth for both
+    /// SystemProxyController's macOS ExceptionsList AND ConfigComposer's
+    /// TUN route-exclude-address. Stored as JSON-encoded `[BypassEntry]`
+    /// by AdvancedView; we only need the `ip` field. Falls back to the
+    /// same defaults AdvancedView shows when nothing is persisted yet
+    /// (fresh install, user never opened Advanced) — otherwise LAN
+    /// devices like 192.168.x.x would get black-holed even though the
+    /// panel claims they're bypassed.
     static func currentBypassIPs() -> [String] {
         guard let data = UserDefaults.standard.data(forKey: bypassListKey),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else { return [] }
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              !array.isEmpty
+        else { return defaultBypassIPs }
         return array.compactMap { $0["ip"] as? String }
     }
+
+    /// Mirrors `AdvancedView.defaultBypass()`'s `ip` field. Keep in sync
+    /// with that array when adding / removing defaults.
+    static let defaultBypassIPs: [String] = [
+        "127.0.0.0/8",
+        "172.16.0.0/12",
+        "10.0.0.0/8",
+        "192.168.0.0/16",
+        "fd00::/8",
+        "100.64.0.0/10",
+    ]
 
     private let log = Logger(subsystem: "org.clash.ChungHwa", category: "config")
 
