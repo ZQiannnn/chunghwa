@@ -6,7 +6,7 @@ struct ChungHwaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .environment(appDelegate.kernel)
                 .environment(appDelegate.resolver)

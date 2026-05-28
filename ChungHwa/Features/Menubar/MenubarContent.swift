@@ -13,6 +13,7 @@ struct MenubarContent: View {
     @Environment(AnonymousMode.self) private var anon
     @Environment(KernelBinaryResolver.self) private var resolver
     @Environment(NotificationCenterStore.self) private var notifications
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -295,6 +296,11 @@ struct MenubarContent: View {
             w.makeKeyAndOrderFront(nil)
             return
         }
+        // Main window has been closed and is no longer in NSApp.windows.
+        // SwiftUI's WindowGroup doesn't auto-recreate in .accessory mode
+        // (dock hidden), so the previous activate-and-iterate path went
+        // silently nowhere. Ask SwiftUI to materialise a fresh instance.
+        openWindow(id: "main")
     }
 }
 
