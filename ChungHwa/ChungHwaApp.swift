@@ -134,8 +134,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // restarts where the boot config wasn't re-read).
             await configStore.setTUN(configStore.tunEnabled, api: kernel.apiClient)
         }
-        let hide = UserDefaults.standard.bool(forKey: "ChungHwa.HideDockIcon")
-        NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        // HideDockIcon now means: dock icon appears only while a main
+        // window is visible. Closing the window (red X) flips us back
+        // to .accessory so the dock stays clean; opening Settings (or
+        // any other window) flips us back to .regular so the user can
+        // tab back via the dock.
+        updateActivationPolicy()
+        for name in [NSWindow.didBecomeVisibleNotification,
+                     NSWindow.willCloseNotification,
+                     NSWindow.didBecomeMainNotification] {
+            NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                // willClose fires BEFORE the window leaves NSApp.windows
+                // — defer a tick so our isVisible check sees the new
+                // state instead of the closing window itself.
+                DispatchQueue.main.async { self?.updateActivationPolicy() }
+            }
+        }
 
         // Initial kernel-update check, delayed so we don't compete with kernel startup.
         Task { @MainActor in
@@ -151,6 +167,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.downloader.checkForUpdates()
                 self.notifyIfKernelUpdateAvailable()
             }
+        }
+    }
+
+    /// Decide whether the dock icon should be visible right now.
+    /// HideDockIcon=false → always show. HideDockIcon=true → show only
+    /// while at least one non-panel content window is visible; once the
+    /// user closes the last window we drop back to .accessory.
+    func updateActivationPolicy() {
+        let hide = UserDefaults.standard.bool(forKey: "ChungHwa.HideDockIcon")
+        guard hide else {
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
+            return
+        }
+        let hasContentWindow = NSApp.windows.contains { w in
+            w.isVisible && w.canBecomeKey && !(w is NSPanel)
+        }
+        let desired: NSApplication.ActivationPolicy = hasContentWindow ? .regular : .accessory
+        if NSApp.activationPolicy() != desired {
+            NSApp.setActivationPolicy(desired)
         }
     }
 

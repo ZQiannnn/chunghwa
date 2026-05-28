@@ -167,11 +167,16 @@ struct SettingsView: View {
                     }
                     .toggleStyle(.switch)
                     .controlSize(.small)
-                    .onChange(of: hideDockIcon) { _, newValue in
-                        NSApp.setActivationPolicy(newValue ? .accessory : .regular)
+                    .onChange(of: hideDockIcon) { _, _ in
+                        // Defer to AppDelegate.updateActivationPolicy so
+                        // the dynamic show-while-window-open logic stays
+                        // the single source of truth (a hard
+                        // setActivationPolicy here would race the
+                        // window-observer-driven path).
+                        (NSApp.delegate as? AppDelegate)?.updateActivationPolicy()
                     }
 
-                    Text("只留菜单栏图标，从那里唤回主窗口。")
+                    Text("Dock 图标只在主窗口可见时显示；关掉窗口后回到菜单栏，再开主窗口又会出现。")
                         .font(.system(size: 11))
                         .foregroundStyle(ChungHwa.Palette.dim)
                         .fixedSize(horizontal: false, vertical: true)
