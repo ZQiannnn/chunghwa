@@ -140,9 +140,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // any other window) flips us back to .regular so the user can
         // tab back via the dock.
         updateActivationPolicy()
-        for name in [NSWindow.didBecomeVisibleNotification,
-                     NSWindow.willCloseNotification,
-                     NSWindow.didBecomeMainNotification] {
+        for name in [NSWindow.didBecomeKeyNotification,
+                     NSWindow.didBecomeMainNotification,
+                     NSWindow.willCloseNotification] {
             NotificationCenter.default.addObserver(
                 forName: name, object: nil, queue: .main
             ) { [weak self] _ in
