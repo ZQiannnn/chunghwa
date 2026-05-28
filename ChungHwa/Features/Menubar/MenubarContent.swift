@@ -608,32 +608,35 @@ private struct MenubarLabelSpeed: View {
     }
 
     /// Render two right-aligned monospaced lines into an NSImage so the
-    /// menubar slot stretches to its natural height. Marked as template
-    /// so macOS recolours it for light/dark menubar materials.
+    /// menubar slot stretches to its natural height. Drawn line-by-line
+    /// (not via boundingRect on a multi-line AttributedString — that
+    /// collapses width to 0 in some macOS builds and the image renders
+    /// invisibly) and NOT marked as template — labelColor needs the
+    /// real glyph colors to land on the menubar.
     private static func makeRateImage(up: String, down: String) -> NSImage {
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .right
-        paragraph.lineSpacing = 0
-        paragraph.maximumLineHeight = 10
-        paragraph.minimumLineHeight = 10
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
-            .paragraphStyle: paragraph,
             .foregroundColor: NSColor.labelColor,
         ]
-        let str = NSAttributedString(string: "\(up)\n\(down)", attributes: attrs)
-        // Measure with a wide bounding rect so we get the natural width.
-        let bounds = str.boundingRect(
-            with: NSSize(width: 200, height: 100),
-            options: [.usesLineFragmentOrigin]
-        )
-        let size = NSSize(width: ceil(bounds.width) + 2, height: 20)
-        let image = NSImage(size: size, flipped: false) { rect in
-            str.draw(with: rect, options: [.usesLineFragmentOrigin])
+        let lines = [up, down]
+        let widths = lines.map { ($0 as NSString).size(withAttributes: attrs).width }
+        let lineH: CGFloat = 10
+        let imgW = ceil(widths.max() ?? 60) + 4
+        let imgH = lineH * CGFloat(lines.count) + 2
+        let image = NSImage(size: NSSize(width: imgW, height: imgH), flipped: false) { _ in
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .right
+            let lineAttrs = attrs.merging([.paragraphStyle: paragraph]) { $1 }
+            for (i, line) in lines.enumerated() {
+                let y = imgH - lineH * CGFloat(i + 1) - 1
+                (line as NSString).draw(
+                    in: NSRect(x: 0, y: y, width: imgW, height: lineH),
+                    withAttributes: lineAttrs
+                )
+            }
             return true
         }
-        image.isTemplate = true
         return image
     }
 
