@@ -561,12 +561,10 @@ struct MenubarLabel: View {
             MenubarLabelIcon()
             MenubarLabelSpeed()
         }
-        // Outer frame fixed so NSStatusItem doesn't repaint its size every
-        // tick. 16 (icon) + 4 (spacing) + 60 (stacked speed) = 80.
-        .frame(width: 80, height: 22)
-        // Anchor everything to the leading edge — the user kept seeing the
-        // icon drift because the speed Text was right-aligned, so the gap
-        // between icon and text varied with string length.
+        // Width-only frame: let NSStatusItem decide the height of the
+        // menubar slot so a two-line VStack/multiline Text isn't clipped
+        // back to a single line (the earlier height: 22 was the cause).
+        .frame(width: 80)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -594,20 +592,17 @@ private struct MenubarLabelSpeed: View {
 
     var body: some View {
         if kernel.apiClient != nil {
-            // Two stacked lines — up on top, down on bottom — matches the
-            // iStat / TopNotch layout the user asked for. No arrows: row
-            // position carries the up/down semantic and frees horizontal
-            // budget for the rate unit ("KB/s") that everyone reads more
-            // easily than a bare number.
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(rate(traffic.current?.upBps ?? 0))
-                Text(rate(traffic.current?.downBps ?? 0))
-            }
-            .font(.system(size: 9, weight: .medium, design: .monospaced))
-            .monospacedDigit()
-            .lineLimit(1)
-            .lineSpacing(-2)
-            .frame(width: 60, alignment: .trailing)
+            // Single Text with an embedded newline + .fixedSize so the
+            // menubar slot grows to fit two lines instead of clipping to
+            // one. A VStack-of-two-Text was being squashed back to a
+            // single visible line by NSStatusItem's default sizing.
+            Text("\(rate(traffic.current?.upBps ?? 0))\n\(rate(traffic.current?.downBps ?? 0))")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .lineSpacing(-1)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 60, alignment: .trailing)
         }
     }
 

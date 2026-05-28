@@ -54,25 +54,28 @@ final class SystemProxyController {
 
     init() {
         let persistedIntent = UserDefaults.standard.object(forKey: Self.intentDefaultsKey) as? Bool
-        let observed = currentlyEnabled()
-        self.enabled = persistedIntent ?? observed
 
-        // Honour stored intent even when SCPreferences disagrees — silently
-        // re-apply via the privileged helper if it's installed, so the
-        // user doesn't have to toggle the switch back on at every launch.
-        if let intent = persistedIntent,
-           intent && !observed,
+        // Trust persisted intent over SCPreferences observation —
+        // networksetup (used by the privileged helper) and SCPreferences
+        // don't always agree, and we've seen launch see observed=false
+        // even when networksetup says the proxy is on. Always re-apply
+        // on launch when intent says 'on' and the helper is installed;
+        // apply() is idempotent on macOS so doing it on every launch is
+        // cheap insurance.
+        if persistedIntent == true,
            KernelPrivilegeHelper.isNetproxyHelperPrivileged() {
             do {
                 try apply(on: true)
+                self.enabled = true
                 log.info("restored system proxy from persisted intent on launch")
+                return
             } catch {
-                // Don't let a launch-time restore failure block the app.
-                // Mirror observed state so the toggle reflects reality.
-                self.enabled = observed
                 log.warning("restore on launch failed: \(String(describing: error), privacy: .public)")
+                self.enabled = currentlyEnabled()
+                return
             }
         }
+        self.enabled = persistedIntent ?? currentlyEnabled()
     }
 
     deinit {

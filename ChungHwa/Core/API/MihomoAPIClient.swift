@@ -198,9 +198,13 @@ actor MihomoAPIClient {
     /// still needs the bits baked into the start-up yaml (see ConfigComposer)
     /// for the very first boot — this call only matters once the API is up.
     func setTUN(enabled: Bool) async throws {
+        // stack MUST match what ConfigComposer wrote into the boot yaml,
+        // otherwise this PATCH yanks mihomo's TUN out from under itself
+        // (system -> gvisor mid-flight = utun stays up but routes break,
+        // which is the 'shield lit but TUN doesn't actually work' bug).
         let body = PatchTunBody(tun: .init(
             enable: enabled,
-            stack: "gvisor",
+            stack: "system",
             autoRoute: true,
             autoDetectInterface: true,
             dnsHijack: ["any:53"]
