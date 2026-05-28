@@ -291,16 +291,23 @@ struct MenubarContent: View {
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         // Same NSPanel filter as applicationShouldHandleReopen: skip the
-        // menubar popover's panel, only target the main scene window.
+        // menubar popover's own panel, only target the main scene window.
+        var found = false
         for w in NSApp.windows where w.canBecomeKey && !(w is NSPanel) {
             w.makeKeyAndOrderFront(nil)
-            return
+            found = true
+            break
         }
-        // Main window has been closed and is no longer in NSApp.windows.
-        // SwiftUI's WindowGroup doesn't auto-recreate in .accessory mode
-        // (dock hidden), so the previous activate-and-iterate path went
-        // silently nowhere. Ask SwiftUI to materialise a fresh instance.
-        openWindow(id: "main")
+        if !found {
+            // Main window has been closed and is no longer in
+            // NSApp.windows. SwiftUI's WindowGroup doesn't auto-recreate
+            // in .accessory mode (dock hidden), so ask SwiftUI directly.
+            openWindow(id: "main")
+        }
+        // .transient popovers only auto-close on clicks OUTSIDE, so a
+        // button click inside leaves the popup hanging over the new
+        // window. Dismiss it explicitly.
+        (NSApp.delegate as? AppDelegate)?.menubarController?.closePopover()
     }
 }
 
@@ -557,69 +564,7 @@ struct MenubarIconName {
     }
 }
 
-/// macOS status-bar item: shield icon + live up/down rates.
-/// Split into icon + speed leaves so the speed text (reading TrafficStore
-/// at 1Hz) re-renders without the icon. Both leaves have fixed frames so
-/// digit-width changes can't drag the icon left/right as the rate ticks.
-struct MenubarLabel: View {
-    var body: some View {
-        HStack(spacing: 4) {
-            MenubarLabelIcon()
-            MenubarLabelSpeed()
-        }
-        // Icon + two-line speed image — leave height implicit so the
-        // image's natural 20pt drives the slot, no width clamp needed.
-        .fixedSize()
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// Icon-only leaf — only redraws when kernel readiness flips.
-private struct MenubarLabelIcon: View {
-    @Environment(KernelController.self) private var kernel
-
-    var body: some View {
-        Image("MenubarIcon")
-            .resizable()
-            .interpolation(.high)
-            .frame(width: 16, height: 16)
-            .opacity(kernel.apiClient == nil ? 0.45 : 1.0)
-    }
-}
-
-/// Speed-only leaf — subscribes to TrafficStore, ticks at 1Hz; the parent
-/// MenubarLabel and the icon next to it stay still. A fixed monospaced
-/// frame width keeps the menubar item from horizontally dancing as digits
-/// roll over (e.g. "↑0" → "↑1.2M").
-private struct MenubarLabelSpeed: View {
-    @Environment(KernelController.self) private var kernel
-    @Environment(TrafficStore.self) private var traffic
-
-    var body: some View {
-        if kernel.apiClient != nil {
-            // Single-line: SwiftUI MenuBarExtra's NSStatusItem clips
-            // anything taller than the menubar slot back to nothing.
-            // Pack up + down side by side so the user still sees both
-            // numbers, with KB/s unit for readability.
-            Text("↑\(rate(traffic.current?.upBps ?? 0)) ↓\(rate(traffic.current?.downBps ?? 0))")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .monospacedDigit()
-                .lineLimit(1)
-        }
-    }
-
-    /// Human-readable rate with a fixed-width feel ("23 KB/s", "1.2 MB/s",
-    /// "0 KB/s"). Stays under 8 chars so the 60pt cell never reflows.
-    private func rate(_ bps: Int) -> String {
-        switch bps {
-        case ..<1024:
-            return "\(bps) B/s"
-        case ..<1_048_576:
-            return String(format: "%.0f KB/s", Double(bps) / 1024)
-        case ..<1_073_741_824:
-            return String(format: "%.1f MB/s", Double(bps) / 1_048_576)
-        default:
-            return String(format: "%.1f GB/s", Double(bps) / 1_073_741_824)
-        }
-    }
-}
+// MenubarLabel / Icon / Speed used to live here as the SwiftUI label
+// for MenuBarExtra. Replaced by MenubarController which renders into an
+// NSStatusItem button via attributedTitle so two-line layout actually
+// shows up. See MenubarController.swift.

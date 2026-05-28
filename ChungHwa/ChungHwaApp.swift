@@ -30,26 +30,10 @@ struct ChungHwaApp: App {
             ChungHwaCommands()
         }
 
-        MenuBarExtra {
-            MenubarContent()
-                .environment(appDelegate.kernel)
-                .environment(appDelegate.systemProxy)
-                .environment(appDelegate.configStore)
-                .environment(appDelegate.profileStore)
-                .environment(appDelegate.proxyStore)
-                .environment(appDelegate.trafficStore)
-                .environment(appDelegate.historyStore)
-                .environment(appDelegate.connectionsStore)
-                .environment(appDelegate.anonymousMode)
-                .environment(appDelegate.resolver)
-                .environment(appDelegate.notificationCenterStore)
-        } label: {
-            MenubarLabel()
-                .environment(appDelegate.kernel)
-                .environment(appDelegate.systemProxy)
-                .environment(appDelegate.trafficStore)
-        }
-        .menuBarExtraStyle(.window)
+        // The status-bar UI is driven by AppDelegate.menubarController
+        // (NSStatusItem + NSPopover), not by SwiftUI MenuBarExtra —
+        // MenuBarExtra clamps its label to one menubar row, and the
+        // user wanted a two-line up/down speed display.
     }
 }
 
@@ -72,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let notificationCenterStore: NotificationCenterStore
     let networkStatusStore: NetworkStatusStore
     let geoIPStore: GeoIPStore
+    var menubarController: MenubarController?
 
     override init() {
         let resolver = KernelBinaryResolver()
@@ -126,6 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Spin up our own NSStatusItem + NSPopover wrapper (replaces
+        // SwiftUI MenuBarExtra) before anything else so the menubar UI
+        // is available even if kernel startup stalls.
+        menubarController = MenubarController(appDelegate: self)
+
         Task { @MainActor in
             await kernel.start()
             // Re-push the persisted TUN preference once the API is up so the
