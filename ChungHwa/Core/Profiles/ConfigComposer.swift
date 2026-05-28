@@ -74,15 +74,7 @@ enum ConfigComposer {
           auto-detect-interface: true
           mtu: 9000
           disable-icmp-forwarding: true
-          route-exclude-address:
-            - 127.0.0.0/8
-            - 10.0.0.0/8
-            - 172.16.0.0/12
-            - 192.168.0.0/16
-            - 169.254.0.0/16
-            - ::1/128
-            - fd00::/8
-            - fe80::/10\(tunHijackLine)\(dnsBlock)
+        \(renderTunExcludeBlock())\(tunHijackLine)\(dnsBlock)
         """
     }
 
@@ -93,6 +85,39 @@ enum ConfigComposer {
             if matchesTopLevelKey(line, keys: [key]) { return true }
         }
         return false
+    }
+
+    /// Render the `route-exclude-address:` block from the user-managed
+    /// 「免认证 IP 段」list in Advanced. Baseline always includes loopback /
+    /// RFC1918 / link-local / IPv6 ULA + LL — without those, claiming the
+    /// default route via TUN black-holes LAN devices (printers, Bonjour,
+    /// NAS). Returns empty string (no block emitted, mihomo applies its
+    /// own default) when there are no entries to write — but baseline is
+    /// always non-empty, so in practice this always renders.
+    private static func renderTunExcludeBlock() -> String {
+        let baseline = [
+            "127.0.0.0/8",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "169.254.0.0/16",
+            "::1/128",
+            "fd00::/8",
+            "fe80::/10",
+        ]
+        var seen = Set(baseline)
+        var out = baseline
+        for entry in ConfigStore.currentBypassIPs() {
+            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !seen.contains(trimmed) else { continue }
+            seen.insert(trimmed)
+            out.append(trimmed)
+        }
+        var lines = ["  route-exclude-address:"]
+        for entry in out {
+            lines.append("    - \(entry)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Composed DNS block used when the source yaml has none. Emits the
