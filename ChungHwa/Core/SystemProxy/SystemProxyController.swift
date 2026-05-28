@@ -43,8 +43,36 @@ final class SystemProxyController {
     /// `@ObservationIgnored` so observation tracking isn't affected.
     @ObservationIgnored private var cachedAuth: AuthorizationRef?
 
+    /// User intent persisted across app launches. macOS's SCPreferences
+    /// snapshot read by `currentlyEnabled()` doesn't always reflect
+    /// network-state changes written via the privileged `networksetup`
+    /// helper — relaunching ChungHwa saw `enabled=false` even when the
+    /// proxy was on in System Settings. Persist the toggle intent so we
+    /// can re-apply on next launch (silently, when the helper is
+    /// already privileged).
+    private static let intentDefaultsKey = "ChungHwa.SystemProxyEnabled"
+
     init() {
-        self.enabled = currentlyEnabled()
+        let persistedIntent = UserDefaults.standard.object(forKey: Self.intentDefaultsKey) as? Bool
+        let observed = currentlyEnabled()
+        self.enabled = persistedIntent ?? observed
+
+        // Honour stored intent even when SCPreferences disagrees — silently
+        // re-apply via the privileged helper if it's installed, so the
+        // user doesn't have to toggle the switch back on at every launch.
+        if let intent = persistedIntent,
+           intent && !observed,
+           KernelPrivilegeHelper.isNetproxyHelperPrivileged() {
+            do {
+                try apply(on: true)
+                log.info("restored system proxy from persisted intent on launch")
+            } catch {
+                // Don't let a launch-time restore failure block the app.
+                // Mirror observed state so the toggle reflects reality.
+                self.enabled = observed
+                log.warning("restore on launch failed: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     deinit {
@@ -59,6 +87,7 @@ final class SystemProxyController {
         do {
             try apply(on: true)
             enabled = true
+            UserDefaults.standard.set(true, forKey: Self.intentDefaultsKey)
             lastError = nil
             log.info("system proxy enabled @ \(self.host, privacy: .public):\(self.port, privacy: .public)")
         } catch {
@@ -84,6 +113,7 @@ final class SystemProxyController {
         do {
             try apply(on: false)
             enabled = false
+            UserDefaults.standard.set(false, forKey: Self.intentDefaultsKey)
             lastError = nil
             log.info("system proxy disabled")
         } catch {
