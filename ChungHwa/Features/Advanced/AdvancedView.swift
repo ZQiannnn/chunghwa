@@ -358,11 +358,9 @@ struct AdvancedView: View {
 
             ForEach(bypass) { entry in
                 IpChip(entry: entry) {
-                    if !entry.locked {
-                        bypass.removeAll { $0.id == entry.id }
-                        AdvancedView.saveBypass(bypass)
-                        systemProxy.reapply()
-                    }
+                    bypass.removeAll { $0.id == entry.id }
+                    AdvancedView.saveBypass(bypass)
+                    systemProxy.reapply()
                 }
             }
         }
@@ -382,11 +380,16 @@ struct AdvancedView: View {
     private static let bypassDefaultsKey = "ChungHwa.Advanced.BypassList"
 
     private static func defaultBypass() -> [BypassEntry] {
+        // Nothing is locked any more — every default is a starting suggestion
+        // the user can delete. Notable: keeping 10/8 / 172.16/12 / 192.168/16
+        // here means "by default, home LAN is direct"; users running the
+        // proxy from inside a cloud VPC remove the matching range so VPC
+        // private IPs flow through the proxy.
         [
-            .init(ip: "127.0.0.0/8",    tag: .defaultTag, locked: true),
-            .init(ip: "172.16.0.0/12",  tag: .defaultTag, locked: true),
-            .init(ip: "10.0.0.0/8",     tag: .defaultTag, locked: true),
-            .init(ip: "192.168.0.0/16", tag: .defaultTag, locked: true),
+            .init(ip: "127.0.0.0/8",    tag: .defaultTag, locked: false),
+            .init(ip: "172.16.0.0/12",  tag: .defaultTag, locked: false),
+            .init(ip: "10.0.0.0/8",     tag: .defaultTag, locked: false),
+            .init(ip: "192.168.0.0/16", tag: .defaultTag, locked: false),
             .init(ip: "fd00::/8",       tag: .custom,     locked: false),
             .init(ip: "100.64.0.0/10",  tag: .tailscale,  locked: false),
         ]
@@ -396,7 +399,9 @@ struct AdvancedView: View {
         guard let data = UserDefaults.standard.data(forKey: bypassDefaultsKey),
               let decoded = try? JSONDecoder().decode([BypassEntry].self, from: data)
         else { return defaultBypass() }
-        return decoded
+        // Migrate older saved lists where the baseline entries were
+        // locked: nothing should be locked anymore.
+        return decoded.map { BypassEntry(ip: $0.ip, tag: $0.tag, locked: false) }
     }
 
     private static func saveBypass(_ list: [BypassEntry]) {
@@ -719,8 +724,6 @@ private struct IpChip: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
-                .disabled(entry.locked)
-                .opacity(entry.locked ? 0.35 : 1)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)

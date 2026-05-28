@@ -108,21 +108,16 @@ enum ConfigComposer {
         return false
     }
 
-    /// Render the `route-exclude-address:` block from the user-managed
-    /// 「免认证 IP 段」list in Advanced. Baseline only includes addresses
-    /// that are unambiguously local (loopback + link-local + IPv6 LL/ULA);
-    /// RFC1918 ranges (10/8, 172.16/12, 192.168/16) are NOT baselined
-    /// because they're also the standard cloud-VPC ranges — defaulting
-    /// them to direct breaks any setup where the proxy lives inside a
-    /// VPC (e.g. accessing a cloud RDS instance via the proxy). Users
-    /// who want LAN devices direct can add their LAN subnet to Advanced
-    /// > 免认证 IP 段 themselves.
+    /// Render the `route-exclude-address:` block. The user-managed
+    /// 「免认证 IP 段」list in Advanced is the single source of truth
+    /// — including the defaults that ship with the app (which the user
+    /// can now delete). The only hard-coded baseline is loopback, since
+    /// routing 127.0.0.0/8 / ::1 through TUN would break the kernel's
+    /// own external-controller socket on 127.0.0.1.
     private static func renderTunExcludeBlock() -> String {
         let baseline = [
             "127.0.0.0/8",
-            "169.254.0.0/16",
             "::1/128",
-            "fe80::/10",
         ]
         var seen = Set(baseline)
         var out = baseline

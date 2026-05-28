@@ -146,14 +146,11 @@ final class SystemProxyController {
         return false
     }
 
-    /// Baseline + user-added bypass entries. De-duped, preserves baseline
-    /// order so a user-added duplicate doesn't shadow the system defaults.
+    /// Baseline + user-added bypass entries. Baseline is now just the
+    /// non-IP entries (`localhost`, `*.local`) that the user can't add
+    /// from the "免认证 IP 段" UI — IP ranges are entirely user-driven.
     private static func composeExceptions() -> [String] {
-        let baseline = [
-            "127.0.0.1", "localhost",
-            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-            "*.local",
-        ]
+        let baseline = ["localhost", "*.local"]
         var seen = Set(baseline)
         var out = baseline
         for entry in ConfigStore.currentBypassIPs() {
