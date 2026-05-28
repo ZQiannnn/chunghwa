@@ -125,6 +125,14 @@ final class SystemProxyController {
         }
     }
 
+    /// Quit-time cleanup: drop the macOS system-proxy entries so the
+    /// dying mihomo on 127.0.0.1:7890 doesn't black-hole user traffic,
+    /// but DON'T touch the persisted intent — relaunch should bring the
+    /// proxy back to whatever the user actually had it on/off as.
+    func disableForQuit() {
+        try? apply(on: false)
+    }
+
     /// Best-effort: check if any enabled network service currently has the
     /// HTTP proxy pointing at our host. We do not claim ownership of state we
     /// did not set; this is just to seed the UI on launch.

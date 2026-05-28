@@ -171,7 +171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if systemProxy.enabled { systemProxy.disable() }
+        // Clear macOS proxy settings on quit so a dying mihomo doesn't
+        // strand the user with a 127.0.0.1:7890 default route, but
+        // keep the persisted intent so the next launch can restore.
+        if systemProxy.enabled { systemProxy.disableForQuit() }
         kernel.stop()
     }
 

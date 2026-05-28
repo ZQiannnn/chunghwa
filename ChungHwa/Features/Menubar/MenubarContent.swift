@@ -561,10 +561,8 @@ struct MenubarLabel: View {
             MenubarLabelIcon()
             MenubarLabelSpeed()
         }
-        // Width-only frame: let NSStatusItem decide the height of the
-        // menubar slot so a two-line VStack/multiline Text isn't clipped
-        // back to a single line (the earlier height: 22 was the cause).
-        .frame(width: 80)
+        // Wide enough for icon + "↑18 KB/s ↓5 KB/s" worst-case (1+M+G unit).
+        .frame(width: 150)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -592,17 +590,17 @@ private struct MenubarLabelSpeed: View {
 
     var body: some View {
         if kernel.apiClient != nil {
-            // Single Text with an embedded newline + .fixedSize so the
-            // menubar slot grows to fit two lines instead of clipping to
-            // one. A VStack-of-two-Text was being squashed back to a
-            // single visible line by NSStatusItem's default sizing.
-            Text("\(rate(traffic.current?.upBps ?? 0))\n\(rate(traffic.current?.downBps ?? 0))")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+            // SwiftUI MenuBarExtra's NSStatusItem clips multi-line text
+            // back to one line no matter what (.fixedSize / lineSpacing
+            // tricks don't survive the wrapper). Keep it single-line and
+            // pack up + down with arrows; user already accepted this
+            // wasn't going to be two-line cleanly without a separate
+            // NSAttributedString-into-NSImage path.
+            Text("↑\(rate(traffic.current?.upBps ?? 0)) ↓\(rate(traffic.current?.downBps ?? 0))")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .monospacedDigit()
-                .lineSpacing(-1)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(width: 60, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: 130, alignment: .leading)
         }
     }
 
