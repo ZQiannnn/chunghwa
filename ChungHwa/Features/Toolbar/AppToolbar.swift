@@ -141,9 +141,33 @@ private struct ToolbarMode: View {
 
 private struct ToolbarSysProxy: View {
     @Environment(SystemProxyController.self) private var systemProxy
+    @Environment(KernelBinaryResolver.self) private var resolver
+    @Environment(NotificationCenterStore.self) private var notifications
+
     var body: some View {
         Button {
-            systemProxy.toggle()
+            Task {
+                // First-time enable on a build that ships the netproxy
+                // helper but hasn't been installed yet — let the TUN-auth
+                // flow stamp it so subsequent toggles bypass the
+                // SCPreferences password prompt. No-op when already
+                // privileged or when the user is just turning the proxy
+                // off.
+                if !systemProxy.enabled {
+                    do {
+                        try await KernelPrivilegeHelper.ensurePrivileged(resolver: resolver)
+                    } catch {
+                        notifications.post(
+                            source: "系统代理",
+                            level: .error,
+                            message: (error as NSError).localizedDescription
+                        )
+                        // Even on auth failure we fall through to toggle so
+                        // the SCPreferences path still works.
+                    }
+                }
+                systemProxy.toggle()
+            }
         } label: {
             Image(systemName: "network")
                 .foregroundStyle(systemProxy.enabled
