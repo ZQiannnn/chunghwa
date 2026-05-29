@@ -31,7 +31,7 @@ final class MenubarController: NSObject {
         popover.contentSize = NSSize(width: 260, height: 360)
         // Fixed slot width — composed image is rendered at exactly
         // this size below, so the menubar item never reflows.
-        statusItem.length = 84
+        statusItem.length = 70
         popover.contentViewController = NSHostingController(
             rootView: MenubarContent()
                 .environment(appDelegate.kernel)
@@ -106,7 +106,7 @@ final class MenubarController: NSObject {
     /// slot. Width matches `statusItem.length` so the slot doesn't
     /// reflow as the rate text shrinks/grows.
     private static func composeImage(up: String, down: String, kernelUp: Bool) -> NSImage {
-        let slotW: CGFloat = 84
+        let slotW: CGFloat = 70
         let slotH: CGFloat = 22
         let iconSize: CGFloat = 16
         let iconY = (slotH - iconSize) / 2
@@ -136,11 +136,13 @@ final class MenubarController: NSObject {
                 )
             }
             guard kernelUp else { return true }
-            // text right-aligned to slot edge
+            // text right-aligned to slot edge — tight gap (2pt) between
+            // icon and text rect so short strings ("0 B/s") still sit
+            // close to the icon rather than floating off to the right.
             let textRect = NSRect(
-                x: iconSize + 4,
+                x: iconSize + 2,
                 y: 0,
-                width: slotW - iconSize - 6,
+                width: slotW - iconSize - 2,
                 height: slotH
             )
             let paragraph = NSMutableParagraphStyle()
