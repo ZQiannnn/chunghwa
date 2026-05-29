@@ -29,10 +29,9 @@ final class MenubarController: NSObject {
         popover.behavior = .transient
         popover.animates = false
         popover.contentSize = NSSize(width: 260, height: 360)
-        // Fixed pixel width so the slot doesn't dance as B/s / KB/s /
-        // MB/s strings change length. 76pt = 16 icon + 4 gap + ~56 for
-        // the widest plausible title ("↑999 KB/s").
-        statusItem.length = 76
+        // Fixed slot width — composed image is rendered at exactly
+        // this size below, so the menubar item never reflows.
+        statusItem.length = 84
         popover.contentViewController = NSHostingController(
             rootView: MenubarContent()
                 .environment(appDelegate.kernel)
@@ -51,15 +50,12 @@ final class MenubarController: NSObject {
         if let button = statusItem.button {
             button.action = #selector(togglePopover(_:))
             button.target = self
-            button.imagePosition = .imageLeading
-            button.imageHugsTitle = true
-            // NSButtonCell defaults to single-line truncation; allow wraps
-            // on \n so two-line attributedTitle actually renders.
-            if let cell = button.cell as? NSButtonCell {
-                cell.lineBreakMode = .byClipping
-                cell.wraps = true
-                cell.usesSingleLineMode = false
-            }
+            // Everything (icon + 2-line speed) is composed into a single
+            // NSImage and shown as imageOnly. Lets us hand-place each
+            // glyph in the 22pt menubar slot — NSButton's automatic
+            // multi-line layout was pushing the title above the icon's
+            // vertical centre.
+            button.imagePosition = .imageOnly
         }
 
         refresh()
@@ -98,37 +94,70 @@ final class MenubarController: NSObject {
         guard let button = statusItem.button else { return }
         let kernelUp = app.kernel.apiClient != nil
         let traffic = app.trafficStore.current
-
-        let icon = NSImage(named: "MenubarIcon")
-        icon?.size = NSSize(width: 16, height: 16)
-        button.image = icon
-        button.alphaValue = kernelUp ? 1.0 : 0.45
-
-        if kernelUp {
-            button.imagePosition = .imageLeading
-            button.attributedTitle = Self.makeTitle(
-                up: rate(traffic?.upBps ?? 0),
-                down: rate(traffic?.downBps ?? 0)
-            )
-        } else {
-            button.imagePosition = .imageOnly
-            button.attributedTitle = NSAttributedString()
-        }
+        button.image = Self.composeImage(
+            up: rate(traffic?.upBps ?? 0),
+            down: rate(traffic?.downBps ?? 0),
+            kernelUp: kernelUp
+        )
     }
 
-    private static func makeTitle(up: String, down: String) -> NSAttributedString {
+    /// Compose icon + two-line right-aligned speed text into a single
+    /// NSImage so we can pixel-place everything in the 22pt menubar
+    /// slot. Width matches `statusItem.length` so the slot doesn't
+    /// reflow as the rate text shrinks/grows.
+    private static func composeImage(up: String, down: String, kernelUp: Bool) -> NSImage {
+        let slotW: CGFloat = 84
+        let slotH: CGFloat = 22
+        let iconSize: CGFloat = 16
+        let iconY = (slotH - iconSize) / 2
         let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .right
-        // Let the font choose line height; the manual 10pt clamp we
-        // had cropped the ascender on the first line and pushed the
-        // text noticeably above the icon's centre.
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: paragraph,
         ]
-        return NSAttributedString(string: "↑\(up)\n↓\(down)", attributes: attrs)
+        // Each line gets its own draw — manual y-coords let us centre
+        // the 2-line block (≈ 20pt total) inside the 22pt slot.
+        let lineH: CGFloat = 10
+        let textBlockH = lineH * 2
+        // y in NSImage coordinates is bottom-up: top line is at the
+        // top of the centred block, bottom line is below it.
+        let topLineY = (slotH - textBlockH) / 2 + lineH
+        let bottomLineY = (slotH - textBlockH) / 2
+
+        return NSImage(size: NSSize(width: slotW, height: slotH), flipped: false) { _ in
+            // icon
+            if let icon = NSImage(named: "MenubarIcon") {
+                icon.size = NSSize(width: iconSize, height: iconSize)
+                icon.draw(
+                    in: NSRect(x: 0, y: iconY, width: iconSize, height: iconSize),
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: kernelUp ? 1.0 : 0.45
+                )
+            }
+            guard kernelUp else { return true }
+            // text right-aligned to slot edge
+            let textRect = NSRect(
+                x: iconSize + 4,
+                y: 0,
+                width: slotW - iconSize - 6,
+                height: slotH
+            )
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .right
+            let lineAttrs = attrs.merging([.paragraphStyle: paragraph]) { $1 }
+            (("↑" + up) as NSString).draw(
+                in: NSRect(x: textRect.minX, y: topLineY,
+                           width: textRect.width, height: lineH),
+                withAttributes: lineAttrs
+            )
+            (("↓" + down) as NSString).draw(
+                in: NSRect(x: textRect.minX, y: bottomLineY,
+                           width: textRect.width, height: lineH),
+                withAttributes: lineAttrs
+            )
+            return true
+        }
     }
 
     private func rate(_ bps: Int) -> String {
