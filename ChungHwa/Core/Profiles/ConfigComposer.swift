@@ -36,7 +36,8 @@ enum ConfigComposer {
         // user yaml's `rules:` items so they match first (higher priority).
         // This makes custom rules profile-agnostic — they apply whether the
         // user is on default config, a subscription, or a hand-written file.
-        let bodyWithRules = injectCustomRulesIntoBody(trimmedTrailing(stripped))
+        let bodyWithOutbounds = injectCustomDirectOutboundsIntoBody(trimmedTrailing(stripped))
+        let bodyWithRules = injectCustomRulesIntoBody(bodyWithOutbounds)
 
         let tunEnabled = UserDefaults.standard.bool(forKey: ConfigStore.tunEnabledDefaultsKey)
         let mixedPort = ConfigStore.currentMixedPort
@@ -214,6 +215,52 @@ enum ConfigComposer {
     ///
     /// This means custom rules are profile-agnostic — they apply regardless
     /// of which subscription is active.
+    /// Splice persisted interface-bound direct outbounds into the `proxies:`
+    /// block so custom rules can target them by name. Entries go right under
+    /// the `proxies:` line; if the yaml has no proxies block, one is appended.
+    private static func injectCustomDirectOutboundsIntoBody(_ body: String) -> String {
+        let outbounds = ConfigStore.currentCustomDirectOutbounds()
+            .filter {
+                !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+                && !$0.interfaceName.trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        guard !outbounds.isEmpty else { return body }
+
+        var rendered: [String] = []
+        for o in outbounds {
+            let name = o.name.trimmingCharacters(in: .whitespaces)
+            let iface = o.interfaceName.trimmingCharacters(in: .whitespaces)
+            rendered.append("  - name: \(yamlScalar(name))")
+            rendered.append("    type: direct")
+            rendered.append("    interface-name: \(yamlScalar(iface))")
+        }
+
+        let lines = body.split(separator: "\n", omittingEmptySubsequences: false)
+        var proxiesIndex: Int?
+        for (idx, line) in lines.enumerated() {
+            if matchesTopLevelKey(line, keys: ["proxies"]) {
+                proxiesIndex = idx
+                break
+            }
+        }
+
+        if let proxiesIndex {
+            var out: [Substring] = []
+            out.reserveCapacity(lines.count + rendered.count)
+            for (idx, line) in lines.enumerated() {
+                out.append(line)
+                if idx == proxiesIndex {
+                    for r in rendered { out.append(Substring(r)) }
+                }
+            }
+            return out.joined(separator: "\n")
+        }
+
+        var trailing = "\n\nproxies:"
+        for r in rendered { trailing += "\n\(r)" }
+        return body + trailing
+    }
+
     private static func injectCustomRulesIntoBody(_ body: String) -> String {
         let rules = ConfigStore.currentCustomRules()
             .filter {

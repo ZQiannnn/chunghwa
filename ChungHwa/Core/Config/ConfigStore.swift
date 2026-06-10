@@ -29,6 +29,17 @@ struct CustomRule: Codable, Equatable, Identifiable, Sendable {
     var target: String
 }
 
+/// A `type: direct` outbound pinned to a specific network interface.
+/// With TUN's auto-detect-interface on, the global DIRECT outbound binds to
+/// the default physical interface, so destinations routed through overlay
+/// devices (ZeroTier feth*, Tailscale utun*) dial out the wrong NIC and
+/// fail. Rules can target one of these by name to reach such subnets.
+struct CustomDirectOutbound: Codable, Equatable, Identifiable, Sendable {
+    var id: UUID = UUID()
+    var name: String
+    var interfaceName: String
+}
+
 /// Mirrors mihomo's `/configs` snapshot for the bits the UI cares about.
 /// Currently outbound mode + log level + LAN inbound; expand as more
 /// toolbar / settings bindings (port, …) move into the chrome.
@@ -53,6 +64,7 @@ final class ConfigStore {
     private(set) var dnsHijackEnabled: Bool
     private(set) var dnsMode: String
     private(set) var customRules: [CustomRule]
+    private(set) var customDirectOutbounds: [CustomDirectOutbound]
     private(set) var unifiedDelay: Bool
     private(set) var proxyAuthUser: String
     private(set) var proxyAuthPass: String
@@ -66,6 +78,7 @@ final class ConfigStore {
     static let dnsHijackKey = "ChungHwa.Advanced.DNSHijack"
     static let dnsModeKey = "ChungHwa.Advanced.DNSMode"
     static let customRulesKey = "ChungHwa.CustomRules"
+    static let customDirectOutboundsKey = "ChungHwa.CustomDirectOutbounds"
     static let unifiedDelayKey = "ChungHwa.Advanced.UnifiedDelay"
     static let proxyAuthUserKey = "ChungHwa.Advanced.AuthUser"
     static let proxyAuthPassKey = "ChungHwa.Advanced.AuthPass"
@@ -104,6 +117,13 @@ final class ConfigStore {
     static func currentCustomRules() -> [CustomRule] {
         guard let data = UserDefaults.standard.data(forKey: customRulesKey),
               let decoded = try? JSONDecoder().decode([CustomRule].self, from: data)
+        else { return [] }
+        return decoded
+    }
+
+    static func currentCustomDirectOutbounds() -> [CustomDirectOutbound] {
+        guard let data = UserDefaults.standard.data(forKey: customDirectOutboundsKey),
+              let decoded = try? JSONDecoder().decode([CustomDirectOutbound].self, from: data)
         else { return [] }
         return decoded
     }
@@ -161,6 +181,7 @@ final class ConfigStore {
         self.dnsHijackEnabled = prefs.hijackEnabled
         self.dnsMode = prefs.mode
         self.customRules = Self.currentCustomRules()
+        self.customDirectOutbounds = Self.currentCustomDirectOutbounds()
         self.unifiedDelay = Self.currentUnifiedDelay
         let auth = Self.currentProxyAuth()
         self.proxyAuthUser = auth.user
@@ -382,6 +403,15 @@ final class ConfigStore {
         customRules = rules
         if let data = try? JSONEncoder().encode(rules) {
             UserDefaults.standard.set(data, forKey: Self.customRulesKey)
+        }
+    }
+
+    /// Persist the interface-bound direct outbound list. Injected into the
+    /// composed yaml's `proxies:` block — kernel reload required to apply.
+    func setCustomDirectOutbounds(_ outbounds: [CustomDirectOutbound]) {
+        customDirectOutbounds = outbounds
+        if let data = try? JSONEncoder().encode(outbounds) {
+            UserDefaults.standard.set(data, forKey: Self.customDirectOutboundsKey)
         }
     }
 }
